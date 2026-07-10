@@ -18,7 +18,7 @@ LightGBM can be utilized in GPU and CPU modes and via Python.
 ## Contents
 
 - LightGBM (cpu + gpu)
-- Python 3.8 (conda) + scikit-learn, notebooks, pandas, matplotlib
+- Python (conda) + scikit-learn, notebooks, pandas, matplotlib
 
 Running the container starts a Jupyter Notebook at `localhost:8888`.
 
@@ -35,7 +35,7 @@ Requires docker and [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) on 
 ```sh
 mkdir lightgbm-docker
 cd lightgbm-docker
-wget https://raw.githubusercontent.com/Microsoft/LightGBM/master/docker/gpu/dockerfile.gpu
+wget https://raw.githubusercontent.com/lightgbm-org/LightGBM/main/docker/gpu/dockerfile.gpu
 docker build -f dockerfile.gpu -t lightgbm-gpu .
 ```
 

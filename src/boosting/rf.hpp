@@ -1,9 +1,10 @@
 /*!
- * Copyright (c) 2017 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2017-2026 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2017-2026 The LightGBM developers. All rights reserved.
  * Licensed under the MIT License. See LICENSE file in the project root for license information.
  */
-#ifndef LIGHTGBM_BOOSTING_RF_H_
-#define LIGHTGBM_BOOSTING_RF_H_
+#ifndef LIGHTGBM_SRC_BOOSTING_RF_HPP_
+#define LIGHTGBM_SRC_BOOSTING_RF_HPP_
 
 #include <LightGBM/boosting.h>
 #include <LightGBM/metric.h>
@@ -32,8 +33,12 @@ class RF : public GBDT {
 
   void Init(const Config* config, const Dataset* train_data, const ObjectiveFunction* objective_function,
     const std::vector<const Metric*>& training_metrics) override {
-    CHECK(config->bagging_freq > 0 && config->bagging_fraction < 1.0f && config->bagging_fraction > 0.0f);
-    CHECK(config->feature_fraction <= 1.0f && config->feature_fraction > 0.0f);
+    if (config->data_sample_strategy == std::string("bagging")) {
+      CHECK((config->bagging_freq > 0 && config->bagging_fraction < 1.0f && config->bagging_fraction > 0.0f) ||
+            (config->feature_fraction < 1.0f && config->feature_fraction > 0.0f));
+    } else {
+      CHECK_EQ(config->data_sample_strategy, std::string("goss"));
+    }
     GBDT::Init(config, train_data, objective_function, training_metrics);
 
     if (num_init_iteration_ > 0) {
@@ -48,15 +53,19 @@ class RF : public GBDT {
     shrinkage_rate_ = 1.0f;
     // only boosting one time
     Boosting();
-    if (is_use_subset_ && bag_data_cnt_ < num_data_) {
+    if (data_sample_strategy_->is_use_subset() && data_sample_strategy_->bag_data_cnt() < num_data_) {
       tmp_grad_.resize(num_data_);
       tmp_hess_.resize(num_data_);
     }
   }
 
   void ResetConfig(const Config* config) override {
-    CHECK(config->bagging_freq > 0 && config->bagging_fraction < 1.0f && config->bagging_fraction > 0.0f);
-    CHECK(config->feature_fraction <= 1.0f && config->feature_fraction > 0.0f);
+    if (config->data_sample_strategy == std::string("bagging")) {
+      CHECK((config->bagging_freq > 0 && config->bagging_fraction < 1.0f && config->bagging_fraction > 0.0f) ||
+            (config->feature_fraction < 1.0f && config->feature_fraction > 0.0f));
+    } else {
+      CHECK_EQ(config->data_sample_strategy, std::string("goss"));
+    }
     GBDT::ResetConfig(config);
     // not shrinkage rate for the RF
     shrinkage_rate_ = 1.0f;
@@ -73,7 +82,7 @@ class RF : public GBDT {
     CHECK_EQ(num_tree_per_iteration_, num_class_);
     // only boosting one time
     Boosting();
-    if (is_use_subset_ && bag_data_cnt_ < num_data_) {
+    if (data_sample_strategy_->is_use_subset() && data_sample_strategy_->bag_data_cnt() < num_data_) {
       tmp_grad_.resize(num_data_);
       tmp_hess_.resize(num_data_);
     }
@@ -89,7 +98,7 @@ class RF : public GBDT {
     }
     size_t total_size = static_cast<size_t>(num_data_) * num_tree_per_iteration_;
     std::vector<double> tmp_scores(total_size, 0.0f);
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for num_threads(OMP_NUM_THREADS()) schedule(static)
     for (int j = 0; j < num_tree_per_iteration_; ++j) {
       size_t offset = static_cast<size_t>(j)* num_data_;
       for (data_size_t i = 0; i < num_data_; ++i) {
@@ -102,7 +111,17 @@ class RF : public GBDT {
 
   bool TrainOneIter(const score_t* gradients, const score_t* hessians) override {
     // bagging logic
-    Bagging(iter_);
+    data_sample_strategy_ ->Bagging(iter_, tree_learner_.get(), gradients_.data(), hessians_.data());
+    const bool is_use_subset = data_sample_strategy_->is_use_subset();
+    const data_size_t bag_data_cnt = data_sample_strategy_->bag_data_cnt();
+    const std::vector<data_size_t, Common::AlignmentAllocator<data_size_t, kAlignedSize>>& bag_data_indices = data_sample_strategy_->bag_data_indices();
+
+    // GOSSStrategy->Bagging may modify value of bag_data_cnt_
+    if (is_use_subset && bag_data_cnt < num_data_) {
+      tmp_grad_.resize(num_data_);
+      tmp_hess_.resize(num_data_);
+    }
+
     CHECK_EQ(gradients, nullptr);
     CHECK_EQ(hessians, nullptr);
 
@@ -115,11 +134,10 @@ class RF : public GBDT {
         auto grad = gradients + offset;
         auto hess = hessians + offset;
 
-        // need to copy gradients for bagging subset.
-        if (is_use_subset_ && bag_data_cnt_ < num_data_) {
-          for (int i = 0; i < bag_data_cnt_; ++i) {
-            tmp_grad_[i] = grad[bag_data_indices_[i]];
-            tmp_hess_[i] = hess[bag_data_indices_[i]];
+        if (is_use_subset && bag_data_cnt < num_data_ && !boosting_on_gpu_) {
+          for (int i = 0; i < bag_data_cnt; ++i) {
+            tmp_grad_[i] = grad[bag_data_indices[i]];
+            tmp_hess_[i] = hess[bag_data_indices[i]];
           }
           grad = tmp_grad_.data();
           hess = tmp_hess_.data();
@@ -132,7 +150,7 @@ class RF : public GBDT {
         double pred = init_scores_[cur_tree_id];
         auto residual_getter = [pred](const label_t* label, int i) {return static_cast<double>(label[i]) - pred; };
         tree_learner_->RenewTreeOutput(new_tree.get(), objective_function_, residual_getter,
-          num_data_, bag_data_indices_.data(), bag_data_cnt_);
+          num_data_, bag_data_indices.data(), bag_data_cnt, train_score_updater_->score());
         if (std::fabs(init_scores_[cur_tree_id]) > kEpsilon) {
           new_tree->AddBias(init_scores_[cur_tree_id]);
         }
@@ -151,7 +169,7 @@ class RF : public GBDT {
               output = init_scores_[cur_tree_id];
             }
           }
-          new_tree->AsConstantTree(output);
+          new_tree->AsConstantTree(output, num_data_);
           MultiplyScore(cur_tree_id, (iter_ + num_init_iteration_));
           UpdateScore(new_tree.get(), cur_tree_id);
           MultiplyScore(cur_tree_id, 1.0 / (iter_ + num_init_iteration_ + 1));
@@ -165,7 +183,9 @@ class RF : public GBDT {
   }
 
   void RollbackOneIter() override {
-    if (iter_ <= 0) { return; }
+    if (iter_ <= 0) {
+      return;
+    }
     int cur_iter = iter_ + num_init_iteration_ - 1;
     // reset score
     for (int cur_tree_id = 0; cur_tree_id < num_tree_per_iteration_; ++cur_tree_id) {
@@ -214,4 +234,4 @@ class RF : public GBDT {
 };
 
 }  // namespace LightGBM
-#endif  // LIGHTGBM_BOOSTING_RF_H_
+#endif  // LIGHTGBM_SRC_BOOSTING_RF_HPP_

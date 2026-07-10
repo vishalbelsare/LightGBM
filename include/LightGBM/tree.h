@@ -1,13 +1,15 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 The LightGBM developers. All rights reserved.
  * Licensed under the MIT License. See LICENSE file in the project root for license information.
  */
-#ifndef LIGHTGBM_TREE_H_
-#define LIGHTGBM_TREE_H_
+#ifndef LIGHTGBM_INCLUDE_LIGHTGBM_TREE_H_
+#define LIGHTGBM_INCLUDE_LIGHTGBM_TREE_H_
 
 #include <LightGBM/dataset.h>
 #include <LightGBM/meta.h>
 
+#include <cstdint>
 #include <string>
 #include <map>
 #include <memory>
@@ -39,7 +41,7 @@ class Tree {
   */
   Tree(const char* str, size_t* used_len);
 
-  ~Tree() noexcept = default;
+  virtual ~Tree() noexcept = default;
 
   /*!
   * \brief Performing a split on tree leaves.
@@ -100,7 +102,7 @@ class Tree {
   * \param num_data Number of total data
   * \param score Will add prediction to score
   */
-  void AddPredictionToScore(const Dataset* data,
+  virtual void AddPredictionToScore(const Dataset* data,
                             data_size_t num_data,
                             double* score) const;
 
@@ -111,7 +113,7 @@ class Tree {
   * \param num_data Number of total data
   * \param score Will add prediction to score
   */
-  void AddPredictionToScore(const Dataset* data,
+  virtual void AddPredictionToScore(const Dataset* data,
                             const data_size_t* used_data_indices,
                             data_size_t num_data, double* score) const;
 
@@ -184,8 +186,8 @@ class Tree {
   *        shrinkage rate (a.k.a learning rate) is used to tune the training process
   * \param rate The factor of shrinkage
   */
-  inline void Shrinkage(double rate) {
-#pragma omp parallel for schedule(static, 1024) if (num_leaves_ >= 2048)
+  virtual inline void Shrinkage(double rate) {
+#pragma omp parallel for num_threads(OMP_NUM_THREADS()) schedule(static, 1024) if (num_leaves_ >= 2048)
     for (int i = 0; i < num_leaves_ - 1; ++i) {
       leaf_value_[i] = MaybeRoundToZero(leaf_value_[i] * rate);
       internal_value_[i] = MaybeRoundToZero(internal_value_[i] * rate);
@@ -209,8 +211,8 @@ class Tree {
 
   inline double shrinkage() const { return shrinkage_; }
 
-  inline void AddBias(double val) {
-#pragma omp parallel for schedule(static, 1024) if (num_leaves_ >= 2048)
+  virtual inline void AddBias(double val) {
+#pragma omp parallel for num_threads(OMP_NUM_THREADS()) schedule(static, 1024) if (num_leaves_ >= 2048)
     for (int i = 0; i < num_leaves_ - 1; ++i) {
       leaf_value_[i] = MaybeRoundToZero(leaf_value_[i] + val);
       internal_value_[i] = MaybeRoundToZero(internal_value_[i] + val);
@@ -218,7 +220,7 @@ class Tree {
     leaf_value_[num_leaves_ - 1] =
         MaybeRoundToZero(leaf_value_[num_leaves_ - 1] + val);
     if (is_linear_) {
-#pragma omp parallel for schedule(static, 1024) if (num_leaves_ >= 2048)
+#pragma omp parallel for num_threads(OMP_NUM_THREADS()) schedule(static, 1024) if (num_leaves_ >= 2048)
       for (int i = 0; i < num_leaves_ - 1; ++i) {
         leaf_const_[i] = MaybeRoundToZero(leaf_const_[i] + val);
       }
@@ -228,13 +230,14 @@ class Tree {
     shrinkage_ = 1.0f;
   }
 
-  inline void AsConstantTree(double val) {
+  virtual inline void AsConstantTree(double val, int count = 0) {
     num_leaves_ = 1;
     shrinkage_ = 1.0f;
     leaf_value_[0] = val;
     if (is_linear_) {
       leaf_const_[0] = val;
     }
+    leaf_count_[0] = count;
   }
 
   /*! \brief Serialize this object to string*/
@@ -319,11 +322,15 @@ class Tree {
 
   inline bool is_linear() const { return is_linear_; }
 
+  #ifdef USE_CUDA
+  inline bool is_cuda_tree() const { return is_cuda_tree_; }
+  #endif  // USE_CUDA
+
   inline void SetIsLinear(bool is_linear) {
     is_linear_ = is_linear;
   }
 
- private:
+ protected:
   std::string NumericalDecisionIfElse(int node) const;
 
   std::string CategoricalDecisionIfElse(int node) const;
@@ -528,6 +535,10 @@ class Tree {
   std::vector<std::vector<int>> leaf_features_;
   /* \brief features used in leaf linear models; indexing is relative to used_features_ */
   std::vector<std::vector<int>> leaf_features_inner_;
+  #ifdef USE_CUDA
+  /*! \brief Marks whether this tree is a CUDATree */
+  bool is_cuda_tree_;
+  #endif  // USE_CUDA
 };
 
 inline void Tree::Split(int leaf, int feature, int real_feature,
@@ -555,7 +566,7 @@ inline void Tree::Split(int leaf, int feature, int real_feature,
   leaf_parent_[leaf] = new_node_idx;
   leaf_parent_[num_leaves_] = new_node_idx;
   // save current leaf value to internal node before change
-  internal_weight_[new_node_idx] = leaf_weight_[leaf];
+  internal_weight_[new_node_idx] = left_weight + right_weight;
   internal_value_[new_node_idx] = leaf_value_[leaf];
   internal_count_[new_node_idx] = left_cnt + right_cnt;
   leaf_value_[leaf] = std::isnan(left_value) ? 0.0f : left_value;
@@ -718,4 +729,4 @@ inline int Tree::GetLeafByMap(const std::unordered_map<int, double>& feature_val
 
 }  // namespace LightGBM
 
-#endif   // LightGBM_TREE_H_
+#endif   // LIGHTGBM_INCLUDE_LIGHTGBM_TREE_H_

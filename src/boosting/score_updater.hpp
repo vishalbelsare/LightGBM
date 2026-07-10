@@ -1,9 +1,10 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2017-2026 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2017-2026 The LightGBM developers. All rights reserved.
  * Licensed under the MIT License. See LICENSE file in the project root for license information.
  */
-#ifndef LIGHTGBM_BOOSTING_SCORE_UPDATER_HPP_
-#define LIGHTGBM_BOOSTING_SCORE_UPDATER_HPP_
+#ifndef LIGHTGBM_SRC_BOOSTING_SCORE_UPDATER_HPP_
+#define LIGHTGBM_SRC_BOOSTING_SCORE_UPDATER_HPP_
 
 #include <LightGBM/dataset.h>
 #include <LightGBM/meta.h>
@@ -39,30 +40,30 @@ class ScoreUpdater {
         Log::Fatal("Number of class for initial score error");
       }
       has_init_score_ = true;
-#pragma omp parallel for schedule(static, 512) if (total_size >= 1024)
+#pragma omp parallel for num_threads(OMP_NUM_THREADS()) schedule(static, 512) if (total_size >= 1024)
       for (int64_t i = 0; i < total_size; ++i) {
         score_[i] = init_score[i];
       }
     }
   }
   /*! \brief Destructor */
-  ~ScoreUpdater() {
+  virtual ~ScoreUpdater() {
   }
 
   inline bool has_init_score() const { return has_init_score_; }
 
-  inline void AddScore(double val, int cur_tree_id) {
+  virtual inline void AddScore(double val, int cur_tree_id) {
     Common::FunctionTimer fun_timer("ScoreUpdater::AddScore", global_timer);
     const size_t offset = static_cast<size_t>(num_data_) * cur_tree_id;
-#pragma omp parallel for schedule(static, 512) if (num_data_ >= 1024)
+#pragma omp parallel for num_threads(OMP_NUM_THREADS()) schedule(static, 512) if (num_data_ >= 1024)
     for (int i = 0; i < num_data_; ++i) {
       score_[offset + i] += val;
     }
   }
 
-  inline void MultiplyScore(double val, int cur_tree_id) {
+  virtual inline void MultiplyScore(double val, int cur_tree_id) {
     const size_t offset = static_cast<size_t>(num_data_) * cur_tree_id;
-#pragma omp parallel for schedule(static, 512) if (num_data_ >= 1024)
+#pragma omp parallel for num_threads(OMP_NUM_THREADS()) schedule(static, 512) if (num_data_ >= 1024)
     for (int i = 0; i < num_data_; ++i) {
       score_[offset + i] *= val;
     }
@@ -73,7 +74,7 @@ class ScoreUpdater {
   * \param tree Trained tree model
   * \param cur_tree_id Current tree for multiclass training
   */
-  inline void AddScore(const Tree* tree, int cur_tree_id) {
+  virtual inline void AddScore(const Tree* tree, int cur_tree_id) {
     Common::FunctionTimer fun_timer("ScoreUpdater::AddScore", global_timer);
     const size_t offset = static_cast<size_t>(num_data_) * cur_tree_id;
     tree->AddPredictionToScore(data_, num_data_, score_.data() + offset);
@@ -85,7 +86,7 @@ class ScoreUpdater {
   * \param tree_learner
   * \param cur_tree_id Current tree for multiclass training
   */
-  inline void AddScore(const TreeLearner* tree_learner, const Tree* tree, int cur_tree_id) {
+  virtual inline void AddScore(const TreeLearner* tree_learner, const Tree* tree, int cur_tree_id) {
     Common::FunctionTimer fun_timer("ScoreUpdater::AddScore", global_timer);
     const size_t offset = static_cast<size_t>(num_data_) * cur_tree_id;
     tree_learner->AddPredictionToScore(tree, score_.data() + offset);
@@ -98,14 +99,14 @@ class ScoreUpdater {
   * \param data_cnt Number of data that will be processed
   * \param cur_tree_id Current tree for multiclass training
   */
-  inline void AddScore(const Tree* tree, const data_size_t* data_indices,
+  virtual inline void AddScore(const Tree* tree, const data_size_t* data_indices,
                        data_size_t data_cnt, int cur_tree_id) {
     Common::FunctionTimer fun_timer("ScoreUpdater::AddScore", global_timer);
     const size_t offset = static_cast<size_t>(num_data_) * cur_tree_id;
     tree->AddPredictionToScore(data_, data_indices, data_cnt, score_.data() + offset);
   }
   /*! \brief Pointer of score */
-  inline const double* score() const { return score_.data(); }
+  virtual inline const double* score() const { return score_.data(); }
 
   inline data_size_t num_data() const { return num_data_; }
 
@@ -114,7 +115,7 @@ class ScoreUpdater {
   /*! \brief Disable copy */
   ScoreUpdater(const ScoreUpdater&) = delete;
 
- private:
+ protected:
   /*! \brief Number of total data */
   data_size_t num_data_;
   /*! \brief Pointer of data set */
@@ -125,4 +126,4 @@ class ScoreUpdater {
 };
 
 }  // namespace LightGBM
-#endif   // LightGBM_BOOSTING_SCORE_UPDATER_HPP_
+#endif  // LIGHTGBM_SRC_BOOSTING_SCORE_UPDATER_HPP_

@@ -19,7 +19,7 @@ valids <- list(train = dtrain, test = dtest)
 
 # Method 1 of training with built-in multiclass objective
 # Note: need to turn off boost from average to match custom objective
-# (https://github.com/microsoft/LightGBM/issues/1846)
+# (https://github.com/lightgbm-org/LightGBM/issues/1846)
 params <- list(
     min_data = 1L
     , learning_rate = 1.0
@@ -36,7 +36,7 @@ model_builtin <- lgb.train(
     , obj = "multiclass"
 )
 
-preds_builtin <- predict(model_builtin, test[, 1L:4L], rawscore = TRUE, reshape = TRUE)
+preds_builtin <- predict(model_builtin, test[, 1L:4L], type = "raw")
 probs_builtin <- exp(preds_builtin) / rowSums(exp(preds_builtin))
 
 # Method 2 of training with custom objective function
@@ -56,7 +56,7 @@ custom_multiclass_obj <- function(preds, dtrain) {
     grad <- prob
     subset_index <- as.matrix(
         data.frame(
-            seq_len(length(labels))
+            seq_along(labels)
             , labels + 1L
             , fix.empty.names = FALSE
         )
@@ -80,7 +80,7 @@ custom_multiclass_metric <- function(preds, dtrain) {
 
     subset_index <- as.matrix(
         data.frame(
-            seq_len(length(labels))
+            seq_along(labels)
             , labels + 1L
             , fix.empty.names = FALSE
         )
@@ -109,7 +109,7 @@ model_custom <- lgb.train(
     , eval = custom_multiclass_metric
 )
 
-preds_custom <- predict(model_custom, test[, 1L:4L], rawscore = TRUE, reshape = TRUE)
+preds_custom <- predict(model_custom, test[, 1L:4L], type = "raw")
 probs_custom <- exp(preds_custom) / rowSums(exp(preds_custom))
 
 # compare predictions

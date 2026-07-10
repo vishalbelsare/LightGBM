@@ -1,9 +1,10 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 The LightGBM developers. All rights reserved.
  * Licensed under the MIT License. See LICENSE file in the project root for license information.
  */
-#ifndef LIGHTGBM_NETWORK_SOCKET_WRAPPER_HPP_
-#define LIGHTGBM_NETWORK_SOCKET_WRAPPER_HPP_
+#ifndef LIGHTGBM_SRC_NETWORK_SOCKET_WRAPPER_HPP_
+#define LIGHTGBM_SRC_NETWORK_SOCKET_WRAPPER_HPP_
 #ifdef USE_SOCKET
 
 #include <LightGBM/utils/log.h>
@@ -35,12 +36,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-// ifaddrs.h is not available on Solaris 10
-#if (defined(sun) || defined(__sun)) && (defined(__SVR4) || defined(__svr4__))
-  #include "ifaddrs_patch.h"
-#else
-  #include <ifaddrs.h>
-#endif
+#include <ifaddrs.h>
+#include <sys/time.h>
 
 #endif  // defined(_WIN32)
 
@@ -60,8 +57,12 @@ const int INVALID_SOCKET = -1;
 #endif
 
 #ifdef _WIN32
-#ifndef _MSC_VER
-// not using visual studio in windows
+
+#define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
+#define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
+
+// existence of inet_pton is checked in CMakeLists.txt and configure.win, then stored in WIN_HAS_INET_PTON
+#ifndef WIN_HAS_INET_PTON
 inline int inet_pton(int af, const char *src, void *dst) {
   struct sockaddr_storage ss;
   int size = sizeof(ss);
@@ -86,9 +87,6 @@ inline int inet_pton(int af, const char *src, void *dst) {
 }
 #endif
 #endif
-
-#define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
-#define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
 
 namespace SocketConfig {
 const int kSocketBufferSize = 100 * 1000;
@@ -122,8 +120,16 @@ class TcpSocket {
   }
   ~TcpSocket() {
   }
-  inline void SetTimeout(int timeout) {
-    setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout), sizeof(timeout));
+  inline void SetTimeout(int timeout_ms) {
+#if defined(_WIN32)
+    DWORD timeout = static_cast<DWORD>(timeout_ms);
+    setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+#else
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#endif
   }
   inline void ConfigSocket() {
     if (sockfd_ == INVALID_SOCKET) {
@@ -253,7 +259,7 @@ class TcpSocket {
   }
 
   inline bool Connect(const char *url, int port) {
-    sockaddr_in  server_addr = GetAddress(url, port);
+    sockaddr_in server_addr = GetAddress(url, port);
     if (connect(sockfd_, reinterpret_cast<const sockaddr*>(&server_addr), sizeof(sockaddr_in)) == 0) {
       return true;
     }
@@ -324,4 +330,4 @@ class TcpSocket {
 
 }  // namespace LightGBM
 #endif  // USE_SOCKET
-#endif   // LightGBM_NETWORK_SOCKET_WRAPPER_HPP_
+#endif   // LIGHTGBM_SRC_NETWORK_SOCKET_WRAPPER_HPP_

@@ -1,5 +1,6 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 The LightGBM developers. All rights reserved.
  * Licensed under the MIT License. See LICENSE file in the project root for license information.
  */
 #include <LightGBM/network.h>
@@ -35,10 +36,10 @@ BruckMap BruckMap::Construct(int rank, int num_machines) {
   }
   BruckMap bruckMap(k);
   for (int j = 0; j < k; ++j) {
-    // set incoming rank at k-th commuication
+    // set incoming rank at k-th communication
     const int in_rank = (rank + distance[j]) % num_machines;
     bruckMap.in_ranks[j] = in_rank;
-    // set outgoing rank at k-th commuication
+    // set outgoing rank at k-th communication
     const int out_rank = (rank - distance[j] + num_machines) % num_machines;
     bruckMap.out_ranks[j] = out_rank;
   }
@@ -68,7 +69,9 @@ RecursiveHalvingMap::RecursiveHalvingMap(int in_k, RecursiveHalvingNodeType _typ
 RecursiveHalvingMap RecursiveHalvingMap::Construct(int rank, int num_machines) {
   // construct all recursive halving map for all machines
   int k = 0;
-  while ((1 << k) <= num_machines) { ++k; }
+  while ((1 << k) <= num_machines) {
+    ++k;
+  }
   // let 1 << k <= num_machines
   --k;
   // distance of each communication
@@ -155,7 +158,7 @@ RecursiveHalvingMap RecursiveHalvingMap::Construct(int rank, int num_machines) {
       rec_map.ranks[i] = next_node_idx;
       // get receive block information
       const int recv_block_start = cur_group_idx / distance[i];
-      rec_map.recv_block_start[i] = group_block_start[recv_block_start * distance[i]];
+      rec_map.recv_block_start[i] = group_block_start[static_cast<size_t>(recv_block_start) * distance[i]];
       int recv_block_len = 0;
       // accumulate block len
       for (int j = 0; j < distance[i]; ++j) {
@@ -164,7 +167,7 @@ RecursiveHalvingMap RecursiveHalvingMap::Construct(int rank, int num_machines) {
       rec_map.recv_block_len[i] = recv_block_len;
       // get send block information
       const int send_block_start = (cur_group_idx + dir * distance[i]) / distance[i];
-      rec_map.send_block_start[i] = group_block_start[send_block_start * distance[i]];
+      rec_map.send_block_start[i] = group_block_start[static_cast<size_t>(send_block_start) * distance[i]];
       int send_block_len = 0;
       // accumulate block len
       for (int j = 0; j < distance[i]; ++j) {

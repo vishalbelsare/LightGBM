@@ -1,9 +1,10 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 The LightGBM developers. All rights reserved.
  * Licensed under the MIT License. See LICENSE file in the project root for license information.
  */
-#ifndef LIGHTGBM_OBJECTIVE_MULTICLASS_OBJECTIVE_HPP_
-#define LIGHTGBM_OBJECTIVE_MULTICLASS_OBJECTIVE_HPP_
+#ifndef LIGHTGBM_SRC_OBJECTIVE_MULTICLASS_OBJECTIVE_HPP_
+#define LIGHTGBM_SRC_OBJECTIVE_MULTICLASS_OBJECTIVE_HPP_
 
 #include <LightGBM/network.h>
 #include <LightGBM/objective_function.h>
@@ -86,7 +87,7 @@ class MulticlassSoftmax: public ObjectiveFunction {
   void GetGradients(const double* score, score_t* gradients, score_t* hessians) const override {
     if (weights_ == nullptr) {
       std::vector<double> rec;
-      #pragma omp parallel for schedule(static) private(rec)
+      #pragma omp parallel for num_threads(OMP_NUM_THREADS()) schedule(static) private(rec)
       for (data_size_t i = 0; i < num_data_; ++i) {
         rec.resize(num_class_);
         for (int k = 0; k < num_class_; ++k) {
@@ -107,7 +108,7 @@ class MulticlassSoftmax: public ObjectiveFunction {
       }
     } else {
       std::vector<double> rec;
-      #pragma omp parallel for schedule(static) private(rec)
+      #pragma omp parallel for num_threads(OMP_NUM_THREADS()) schedule(static) private(rec)
       for (data_size_t i = 0; i < num_data_; ++i) {
         rec.resize(num_class_);
         for (int k = 0; k < num_class_; ++k) {
@@ -121,7 +122,7 @@ class MulticlassSoftmax: public ObjectiveFunction {
           if (label_int_[i] == k) {
             gradients[idx] = static_cast<score_t>((p - 1.0f) * weights_[i]);
           } else {
-            gradients[idx] = static_cast<score_t>((p) * weights_[i]);
+            gradients[idx] = static_cast<score_t>(p * weights_[i]);
           }
           hessians[idx] = static_cast<score_t>((factor_ * p * (1.0f - p))* weights_[i]);
         }
@@ -165,7 +166,7 @@ class MulticlassSoftmax: public ObjectiveFunction {
     }
   }
 
- private:
+ protected:
   double factor_;
   /*! \brief Number of data */
   data_size_t num_data_;
@@ -266,7 +267,7 @@ class MulticlassOVA: public ObjectiveFunction {
     return binary_loss_[class_id]->ClassNeedTrain(0);
   }
 
- private:
+ protected:
   /*! \brief Number of data */
   data_size_t num_data_;
   /*! \brief Number of classes */
@@ -276,4 +277,4 @@ class MulticlassOVA: public ObjectiveFunction {
 };
 
 }  // namespace LightGBM
-#endif   // LightGBM_OBJECTIVE_MULTICLASS_OBJECTIVE_HPP_
+#endif   // LIGHTGBM_SRC_OBJECTIVE_MULTICLASS_OBJECTIVE_HPP_

@@ -1,9 +1,10 @@
 /*!
- * Copyright (c) 2016 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2016-2026 The LightGBM developers. All rights reserved.
  * Licensed under the MIT License. See LICENSE file in the project root for license information.
  */
-#ifndef LIGHTGBM_METRIC_H_
-#define LIGHTGBM_METRIC_H_
+#ifndef LIGHTGBM_INCLUDE_LIGHTGBM_METRIC_H_
+#define LIGHTGBM_INCLUDE_LIGHTGBM_METRIC_H_
 
 #include <LightGBM/config.h>
 #include <LightGBM/dataset.h>
@@ -55,6 +56,11 @@ class Metric {
   * \param config Config for metric
   */
   LIGHTGBM_EXPORT static Metric* CreateMetric(const std::string& type, const Config& config);
+
+  /*!
+  * \brief Whether boosting is done on CUDA
+  */
+  virtual bool IsCUDAMetric() const { return false; }
 };
 
 /*!
@@ -137,4 +143,4 @@ class DCGCalculator {
 }  // namespace LightGBM
 
 
-#endif   // LightGBM_METRIC_H_
+#endif   // LIGHTGBM_INCLUDE_LIGHTGBM_METRIC_H_

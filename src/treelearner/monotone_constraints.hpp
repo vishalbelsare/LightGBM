@@ -1,10 +1,13 @@
 /*!
- * Copyright (c) 2020 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2020-2026 Microsoft Corporation. All rights reserved.
+ * Copyright (c) 2020-2026 The LightGBM developers. All rights reserved.
  * Licensed under the MIT License. See LICENSE file in the project root for
  * license information.
  */
-#ifndef LIGHTGBM_TREELEARNER_MONOTONE_CONSTRAINTS_HPP_
-#define LIGHTGBM_TREELEARNER_MONOTONE_CONSTRAINTS_HPP_
+#ifndef LIGHTGBM_SRC_TREELEARNER_MONOTONE_CONSTRAINTS_HPP_
+#define LIGHTGBM_SRC_TREELEARNER_MONOTONE_CONSTRAINTS_HPP_
+
+#include <LightGBM/tree.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -303,11 +306,11 @@ struct AdvancedFeatureConstraints : FeatureConstraint {
     max_constraints.UpdateMax(new_max);
   }
 
-  bool FeatureMaxConstraintsToBeUpdated() {
+  bool FeatureMaxConstraintsToBeUpdated() const {
     return max_constraints_to_be_recomputed;
   }
 
-  bool FeatureMinConstraintsToBeUpdated() {
+  bool FeatureMinConstraintsToBeUpdated() const {
     return min_constraints_to_be_recomputed;
   }
 
@@ -875,7 +878,7 @@ class AdvancedLeafConstraints : public IntermediateLeafConstraints {
     // for example when adding a constraints cstr2 on thresholds [1:2),
     // on an existing constraints cstr1 on thresholds [0, +inf),
     // the thresholds and constraints must become
-    // [0, 1, 2] and  [cstr1, cstr2, cstr1]
+    // [0, 1, 2] and [cstr1, cstr2, cstr1]
     // so since we loop through thresholds only once,
     // the previous constraint that still applies needs to be recorded
     double previous_constraint = use_max_operator
@@ -1181,4 +1184,4 @@ LeafConstraintsBase* LeafConstraintsBase::Create(const Config* config,
 }
 
 }  // namespace LightGBM
-#endif  // LIGHTGBM_TREELEARNER_MONOTONE_CONSTRAINTS_HPP_
+#endif  // LIGHTGBM_SRC_TREELEARNER_MONOTONE_CONSTRAINTS_HPP_
